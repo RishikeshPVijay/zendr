@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>zendr | Receive</title>
+
+    <style>
+        .folder {
+
+            width: 150px;
+            height: 150px;
+            border: 1px solid greenyellow;
+            background-image: url("/assets/folder.png");
+            background-repeat: no-repeat;
+            position: relative;
+            background-position: center;
+            background-size: 100px 100px;
+        }
+
+        .doc {
+
+            width: 150px;
+            height: 150px;
+            border: 1px solid greenyellow;
+            background-repeat: no-repeat;
+            position: relative;
+            background-position: center;
+            background-size: 100px 100px;
+        }
+
+        .unk {
+            background-image: url("/assets/unknown.png");
+        }
+
+        .docu {
+            background-image: url("/assets/document.png");
+        }
+
+        .comp {
+            background-image: url("/assets/zip.png");
+        }
+
+        .img {
+            background-image: url("/assets/image.png");
+        }
+
+        .prog {
+            background-image: url("/assets/programming.png");
+        }
+
+        .json {
+            background-image: url("/assets/json.png");
+        }
+
+        .vid {
+            background-image: url("/assets/video.png");
+        }
+
+        .pdf {
+            background-image: url("/assets/pdf.png");
+        }
+
+        .txt {
+            background-image: url("/assets/txt.png");
+        }
+
+        .apk {
+            background-image: url("/assets/apk.png");
+        }
+
+        ul {
+            list-style-type: none;
+            padding: 0;
+        }
+
+        ul li {
+            padding: 0;
+            display: inline-block;
+        }
+
+        ul li a {
+            border: 1px solid red;
+            position: absolute;
+            bottom: 0;
+            display: inline-block;
+            width: 100%;
+            text-align: center;
+            text-decoration: none;
+            font-family: sans-serif;
+            font-size: 12px;
+            height: 100%;
+            vertical-align: 100%;
+
+        }
+    </style>
+
+</head>
+
+<body>
+
+    <ul>
+
+
+
+
+    </ul>
+    <ul>
+
+
+        <% 
+
+thisDir = data.thisDir;
+thisFile = data.thisFile;
+
+
+
+for(var i = 0; i < thisDir.length; i ++ ){
+    
+
+    
+%>
+
+        <li class="folder"><a href="<%= thisDir[i].split(location)[1]%>"><%= path.basename(thisDir[i]) %></a></li>
+
+
+        <%}
+
+
+
+for(var i = 0; i < thisFile.length; i ++ ){%>
+
+        <% var ext = 'unk'; 
+    switch (path.basename(thisFile[i]).slice(-3).toLowerCase()) {
+        case "jpg":
+        case "png":
+        case "tif":
+        case "raw":
+            ext = 'img';
+            break;
+        case "mkv":
+        case "mp4":
+        case "avi":
+        case "wmv":
+        case "flv":
+            ext = 'vid';
+            break;
+        case "zip":
+        case ".7z":
+        case "rar":
+        case "tar":
+        case ".gz":
+        case "tgz":
+            ext = 'comp';
+            break;
+        case "pdf":
+            ext = 'pdf';
+            break;
+        case "txt":
+            ext = 'txt';
+            break;
+        case "ocx":
+            ext = 'docu';
+            break;
+        case ".js":
+        case "tml":
+        case "css":
+        case "art":
+        case ".py":
+        case "jsp":
+        case ".pl":
+        case "xml":
+        case "ejs":
+        case "pug":
+            ext = 'prog';
+            break;
+        case "son":
+            ext = 'json';
+            break;
+        case "apk":
+            ext = 'apk';
+            break;
+        default:
+            ext = 'unk';
+    }%>
+
+        <li class="doc <%=ext%>"><a download href="/temp/<%= path.basename(thisFile[i]) %>"><%= path.basename(thisFile[i]) %></a>
+        </li>
+
+
+        <%}
+
+%>
+
+
+
+    </ul>
+</body>
+
+</html>

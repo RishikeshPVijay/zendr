@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>zendr</title>
+    <style>
+        #send-div {
+            position: fixed;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+        }
+        #code-div {
+            position: absolute;
+            top: 5%;
+            left: 5%;
+        }
+        a {
+            text-decoration: none;
+            color: rgb(40, 158, 4);
+        }
+        #send-b-tn {
+            height: 50px;
+            width: 150px;
+            background-color: transparent;
+            border: rgb(49, 211, 0) 2px solid;
+            cursor: pointer;
+            font-size: 20px;
+            font-weight: 600;
+            font-family: sans-serif;
+            color: rgb(40, 158, 4);
+            transition: all 0.3s;
+        }
+        #send-b-tn:hover {
+            background-color: rgb(49, 211, 0);
+            color: white;
+            font-size: 22px;
+            transition: all 0.3s;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="code-div">
+        Open url <a href="javascript:void(0)">zendr.herokuapp.com</a> to receive and enter
+        Code: <a href="javascript:void(0)"><%= id %></a>
+    </div>
+    <div id="send-div">
+        <form action="/path" method="get">
+            <button id="send-b-tn" type="submit">Send</button>
+        </form>
+        <br>
+        <!-- <form action="/receive" method="get">
+            <button type="submit">Receive</button>
+        </form> -->
+    </div>
+</body>
+
+</html>

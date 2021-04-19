@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <style>
+        html {
+            height: 100%;
+        }
+        body, .content-body {
+            height: 95%;
+        }
+    </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>zendr | Receive</title>
+    <script src="/plugins/jquery/jquery.min.js"></script>
+</head>
+<body>
+    <div class="content-body">
+        Ready to receive...
+    </div>
+    <script src="/extensions/socketio/socketio.js"></script>
+</body>
+</html>
+
+<script>
+    var socket = io.connect();
+    socket.emit('receive', {code: '<%= code %>', name: '<%= name %>'});
+    window.onbeforeunload = function() { return "Disconnect?"; };
+    socket.on('download', function(data) {
+        $('.content-body').html('<iframe src="'+data.link+'" height="100%" width="100%" frameborder="0"></iframe>');
+
+        window.onbeforeunload = function() { return "Disconnect?"; };
+    });
+</script>
