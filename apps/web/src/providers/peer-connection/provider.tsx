@@ -16,6 +16,14 @@ export const PeerConnectionProvider: React.FC<React.PropsWithChildren> = ({ chil
     (peerId: Peer['id'], message: BaseMessage) => manager.sendMessage(peerId, message),
     [manager],
   );
+  const sendBinary = useCallback(
+    (peerId: Peer['id'], data: ArrayBuffer) => manager.sendBinary(peerId, data),
+    [manager],
+  );
+  const waitForBufferedAmountLow = useCallback(
+    (peerId: Peer['id']) => manager.waitForBufferedAmountLow(peerId),
+    [manager],
+  );
   const onStateChange = useCallback(
     (peerId: Peer['id'], listener: (state: RTCPeerConnectionState) => void) =>
       manager.onStateChange(peerId, listener),
@@ -23,6 +31,10 @@ export const PeerConnectionProvider: React.FC<React.PropsWithChildren> = ({ chil
   );
   const addMessageHandler = useCallback(
     (listener: (peerId: Peer['id'], message: BaseMessage) => void) => manager.onMessage(listener),
+    [manager],
+  );
+  const addBinaryListener = useCallback(
+    (listener: (peerId: string, data: ArrayBuffer) => void) => manager.onBinary(listener),
     [manager],
   );
 
@@ -38,6 +50,9 @@ export const PeerConnectionProvider: React.FC<React.PropsWithChildren> = ({ chil
         onStateChange,
         sendMessage,
         addMessageHandler,
+        sendBinary,
+        addBinaryListener,
+        waitForBufferedAmountLow,
       }}
     >
       {children}

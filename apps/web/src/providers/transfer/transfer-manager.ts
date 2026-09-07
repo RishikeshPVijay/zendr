@@ -1,16 +1,23 @@
 import type {
-  BaseMessage,
-  FileMetadata,
   Peer,
   TransferAcceptMessage,
+  TransferCompleteMessage,
+  TransferFileCompleteMessage,
+  TransferFileStartMessage,
+  TransferMessage,
   TransferRejectMessage,
   TransferRequestMessage,
+  TransferStartMessage,
 } from '@zendr/protocol';
 import { uuidv4 } from '../../utils';
 import type { Transfer } from './context';
+import { FileTransferReceiver } from './file-transfer-receiver';
+import { FileTransferSender } from './file-transfer-sender';
+import { FileTransferSession } from './file-transfer-session';
 
 type PeerId = Peer['id'];
-type SendMessageFunction = (peerId: PeerId, message: BaseMessage) => void;
+type SendMessageFunction = (peerId: PeerId, message: TransferMessage) => void;
+type SendBinaryFunction = (peerId: PeerId, data: ArrayBuffer) => void;
 type PeerStateChangeListener = (
   peerId: PeerId,
   listener: (state: RTCPeerConnectionState) => void,
@@ -20,16 +27,18 @@ type TransferId = Transfer['id'];
 
 export class TransferManager {
   private transfers = new Map<TransferId, Transfer>();
-  private sendMessage: SendMessageFunction;
-  private onPeerStateChange: PeerStateChangeListener;
   private requestListeners = new Set<VoidFunction>();
   private peerStateUnsubscribers = new Map<PeerId, VoidFunction>();
   private transfersSnapshot: Transfer[] = [];
+  private sourceFiles = new Map<TransferId, File[]>();
+  private transferSessions = new Map<TransferId, FileTransferSession>();
 
-  constructor(sendMessage: SendMessageFunction, onPeerStateChange: PeerStateChangeListener) {
-    this.sendMessage = sendMessage;
-    this.onPeerStateChange = onPeerStateChange;
-  }
+  constructor(
+    private readonly sendMessage: SendMessageFunction,
+    private readonly sendBinary: SendBinaryFunction,
+    private readonly waitForBufferedAmountLow: (peerId: PeerId) => Promise<void>,
+    private readonly onPeerStateChange: PeerStateChangeListener,
+  ) {}
 
   private notifyListeners() {
     this.transfersSnapshot = Array.from(this.transfers.values());
@@ -65,8 +74,6 @@ export class TransferManager {
   }
 
   private handlePeerDisconnect(peerId: PeerId) {
-    let changed = false;
-
     for (const [id, transfer] of this.transfers) {
       if (
         transfer.peerId !== peerId ||
@@ -75,12 +82,8 @@ export class TransferManager {
         continue;
       }
 
-      this.transfers.set(id, { ...transfer, state: 'disconnected' });
-      changed = true;
-    }
-
-    if (changed) {
-      this.notifyListeners();
+      this.transferSessions.get(id)?.abort();
+      this.updateTransfer(id, { state: 'disconnected' });
     }
 
     this.removePeerStateListenerIfUnused(peerId);
@@ -98,26 +101,111 @@ export class TransferManager {
     return this.transfersSnapshot;
   };
 
-  sendRequest(peerId: PeerId, files: FileMetadata[]) {
+  private updateTransfer(
+    id: TransferId,
+    data: Partial<Omit<Transfer, 'id'>>,
+    { notify } = { notify: true },
+  ) {
+    const transfer = this.transfers.get(id);
+    if (!transfer) {
+      throw new Error(`No transfer with id (${id}) found`);
+    }
+
+    this.transfers.set(id, { ...transfer, ...data });
+
+    if (notify) {
+      this.notifyListeners();
+    }
+  }
+
+  private startTransfer(id: TransferId) {
+    const transfer = this.transfers.get(id);
+
+    if (!transfer) {
+      return;
+    }
+
+    const sourceFiles = this.sourceFiles.get(id);
+
+    if (!sourceFiles) {
+      return;
+    }
+
+    const sender = new FileTransferSender(
+      transfer.id,
+      sourceFiles,
+      {
+        sendMessage: (message) => {
+          this.sendMessage(transfer.peerId, message);
+        },
+        sendBinary: (data) => {
+          this.sendBinary(transfer.peerId, data);
+        },
+        waitForBufferedAmountLow: () => {
+          return this.waitForBufferedAmountLow(transfer.peerId);
+        },
+      },
+      (progress) => {
+        this.updateTransfer(id, { progress });
+      },
+    );
+    const session = new FileTransferSession(
+      transfer,
+      { sender },
+      {
+        onStart: () => {
+          this.sendMessage(transfer.peerId, { type: 'transfer:start', id: transfer.id });
+        },
+        onCompleted: () => {
+          this.updateTransfer(id, { state: 'completed' });
+          this.sendMessage(transfer.peerId, { type: 'transfer:complete', id: transfer.id });
+        },
+        onFailed: (error) => {
+          console.error('Transfer failed', id, error);
+          this.updateTransfer(id, { state: 'failed' });
+          this.sendMessage(transfer.peerId, {
+            type: 'transfer:error',
+            id: transfer.id,
+            code: {} as never,
+          });
+        },
+      },
+    );
+
+    this.transferSessions.set(id, session);
+    this.updateTransfer(id, { state: 'transferring' });
+
+    void session.start();
+  }
+
+  sendRequest(peerId: PeerId, fileList: FileList) {
     this.ensurePeerStateListener(peerId);
 
-    const transferRequest: Transfer = {
+    const files = Array.from(fileList);
+    const transfer: Transfer = {
       id: uuidv4(),
       direction: 'outgoing',
       state: 'pending',
       peerId,
-      files,
+      files: Array.from(fileList).map(({ name, type, size }) => ({
+        name,
+        type,
+        size,
+      })),
+      progress: 0,
       createdAt: Date.now(),
     };
 
-    this.transfers.set(transferRequest.id, transferRequest);
+    this.transfers.set(transfer.id, transfer);
+    this.sourceFiles.set(transfer.id, files);
+
     this.notifyListeners();
 
     const message: TransferRequestMessage = {
       type: 'transfer:request',
-      id: transferRequest.id,
-      files: transferRequest.files,
-      createdAt: transferRequest.createdAt,
+      id: transfer.id,
+      files: transfer.files,
+      createdAt: transfer.createdAt,
     };
 
     this.sendMessage(peerId, message);
@@ -134,6 +222,7 @@ export class TransferManager {
       state: 'pending',
       files: data.files,
       peerId,
+      progress: 0,
       createdAt: data.createdAt,
     });
     this.notifyListeners();
@@ -151,8 +240,7 @@ export class TransferManager {
       id,
     };
 
-    this.transfers.set(id, { ...transfer, state: 'accepted' });
-    this.notifyListeners();
+    this.updateTransfer(id, { state: 'accepted' });
     this.sendMessage(transfer.peerId, message);
   }
 
@@ -168,8 +256,7 @@ export class TransferManager {
       id,
     };
 
-    this.transfers.set(id, { ...transfer, state: 'rejected' });
-    this.notifyListeners();
+    this.updateTransfer(id, { state: 'rejected' });
     this.sendMessage(transfer.peerId, message);
 
     this.removePeerStateListenerIfUnused(transfer.peerId);
@@ -187,8 +274,9 @@ export class TransferManager {
       return;
     }
 
-    this.transfers.set(id, { ...transfer, state: 'accepted' });
-    this.notifyListeners();
+    this.updateTransfer(id, { state: 'accepted' });
+
+    this.startTransfer(id);
   }
 
   handleReject(peerId: PeerId, id: TransferId) {
@@ -203,9 +291,73 @@ export class TransferManager {
       return;
     }
 
-    this.transfers.set(id, { ...transfer, state: 'rejected' });
-    this.notifyListeners();
+    this.updateTransfer(id, { state: 'rejected' });
 
     this.removePeerStateListenerIfUnused(peerId);
+  }
+
+  handleTransferStart(message: TransferStartMessage) {
+    const transfer = this.transfers.get(message.id);
+    if (!transfer) {
+      return;
+    }
+
+    const receiver = new FileTransferReceiver(
+      transfer.files,
+      (progress) => {
+        this.updateTransfer(transfer.id, { progress });
+      },
+      (fileIndex) => {
+        console.log('completed file ', fileIndex);
+      },
+    );
+    const session = new FileTransferSession(
+      transfer,
+      { receiver },
+      { onStart() {}, onFailed() {}, onCompleted() {} },
+    );
+
+    this.transferSessions.set(message.id, session);
+    this.updateTransfer(transfer.id, { state: 'transferring' });
+  }
+
+  handleFileStart(message: TransferFileStartMessage) {
+    const session = this.transferSessions.get(message.id);
+
+    if (!session) {
+      return;
+    }
+
+    session.handleFileStart(message.fileIndex);
+  }
+
+  handleFileComplete(message: TransferFileCompleteMessage) {
+    const session = this.transferSessions.get(message.id);
+
+    if (!session) {
+      return;
+    }
+
+    session.handleFileComplete();
+  }
+
+  handleBinary(peerId: PeerId, data: ArrayBuffer) {
+    const transfer = Array.from(this.transfers.values()).find(
+      (transfer) => transfer.peerId === peerId,
+    );
+    if (!transfer) {
+      return;
+    }
+
+    const session = this.transferSessions.get(transfer.id);
+    if (!session) {
+      return;
+    }
+
+    session.handleFileChunk(data);
+  }
+
+  handleTransferComplete(message: TransferCompleteMessage) {
+    this.updateTransfer(message.id, { state: 'completed' });
   }
 }

@@ -7,10 +7,17 @@ import { TransferHandler } from './transfer-handler';
 import { TransferManager } from './transfer-manager';
 
 export const TransferProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
-  const { sendMessage, addMessageHandler, onStateChange } = usePeerConnection();
+  const {
+    sendMessage,
+    addMessageHandler,
+    sendBinary,
+    addBinaryListener,
+    onStateChange,
+    waitForBufferedAmountLow,
+  } = usePeerConnection();
   const manager = useMemo(
-    () => new TransferManager(sendMessage, onStateChange),
-    [sendMessage, onStateChange],
+    () => new TransferManager(sendMessage, sendBinary, waitForBufferedAmountLow, onStateChange),
+    [sendMessage, sendBinary, onStateChange, waitForBufferedAmountLow],
   );
   const handler = useMemo(() => new TransferHandler(manager), [manager]);
   const transfers = useSyncExternalStore(
@@ -19,16 +26,7 @@ export const TransferProvider: React.FC<React.PropsWithChildren> = ({ children }
   );
 
   const sendRequest = useCallback(
-    (peerId: Peer['id'], fileList: FileList) => {
-      manager.sendRequest(
-        peerId,
-        Array.from(fileList).map(({ name, type, size }) => ({
-          name,
-          type,
-          size,
-        })),
-      );
-    },
+    (peerId: Peer['id'], fileList: FileList) => manager.sendRequest(peerId, fileList),
     [manager],
   );
   const acceptTransfer = useCallback((id: Transfer['id']) => manager.acceptTransfer(id), [manager]);
@@ -37,6 +35,10 @@ export const TransferProvider: React.FC<React.PropsWithChildren> = ({ children }
   useEffect(() => {
     return addMessageHandler((peerId, message) => handler.handle(peerId, message));
   }, [addMessageHandler, handler]);
+
+  useEffect(() => {
+    return addBinaryListener((peerId, data) => manager.handleBinary(peerId, data));
+  }, [addBinaryListener, manager]);
 
   return (
     <TransferContext

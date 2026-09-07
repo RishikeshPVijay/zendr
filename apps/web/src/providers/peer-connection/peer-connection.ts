@@ -1,8 +1,12 @@
 import type { BaseMessage, Candidate, ClientSignalingMessage, Peer } from '@zendr/protocol';
 
+const BUFFERED_AMOUNT_LOW_WATERMARK = 64 * 1024;
+const BUFFERED_AMOUNT_HIGH_WATERMARK = 1024 * 1024;
+
 type SendFunction = (message: ClientSignalingMessage) => void;
 type StateChangeCallback = (state: RTCPeerConnectionState) => void;
 type MessageCallback = (message: BaseMessage) => void;
+type BinaryCallback = (data: ArrayBuffer) => void;
 
 export class PeerConnection {
   private readonly connection = new RTCPeerConnection({
@@ -13,19 +17,17 @@ export class PeerConnection {
     ],
   });
   private dataChannel?: RTCDataChannel;
-  private readonly peerId;
-  private readonly send: SendFunction;
-  private messageCallback: MessageCallback;
 
   constructor(
-    peerId: Peer['id'],
-    send: SendFunction,
-    onStateChange: StateChangeCallback,
-    onMessage: MessageCallback,
+    private readonly peerId: Peer['id'],
+    private readonly send: SendFunction,
+    readonly onStateChange: StateChangeCallback,
+    private readonly onMessage: MessageCallback,
+    private readonly onBinary: BinaryCallback,
   ) {
     this.peerId = peerId;
     this.send = send;
-    this.messageCallback = onMessage;
+    this.onMessage = onMessage;
 
     this.connection.onconnectionstatechange = () => {
       onStateChange(this.connection.connectionState);
@@ -68,14 +70,18 @@ export class PeerConnection {
     };
 
     this.dataChannel.onmessage = (e) => {
-      let message;
-      try {
-        message = JSON.parse(e.data);
-      } catch (err) {
-        throw new Error('Invalid JSON', { cause: err });
-      }
+      if (typeof e.data === 'string') {
+        let message;
+        try {
+          message = JSON.parse(e.data);
+        } catch (err) {
+          throw new Error('Invalid JSON', { cause: err });
+        }
 
-      this.messageCallback(message);
+        this.onMessage(message);
+      } else {
+        this.onBinary(e.data);
+      }
     };
 
     this.dataChannel.onclose = () => {
@@ -142,5 +148,34 @@ export class PeerConnection {
     }
 
     this.dataChannel.send(JSON.stringify(message));
+  }
+
+  sendBinary(data: ArrayBuffer) {
+    if (this.dataChannel?.readyState !== 'open') {
+      throw new Error('Data channel not open');
+    }
+
+    this.dataChannel.send(data);
+  }
+
+  async waitForBufferedAmountLow(): Promise<void> {
+    const channel = this.dataChannel;
+
+    if (!channel) {
+      throw new Error('No channel');
+    }
+
+    if (channel.bufferedAmount > BUFFERED_AMOUNT_HIGH_WATERMARK) {
+      return new Promise((resolve) => {
+        channel.bufferedAmountLowThreshold = BUFFERED_AMOUNT_LOW_WATERMARK;
+
+        channel.onbufferedamountlow = () => {
+          channel.onbufferedamountlow = null;
+          resolve();
+        };
+      });
+    }
+
+    return;
   }
 }

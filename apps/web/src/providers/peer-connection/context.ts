@@ -12,6 +12,9 @@ export type PeerConnectionContextValue = {
   ) => VoidFunction;
   sendMessage: (peerId: PeerId, message: BaseMessage) => void;
   addMessageHandler: (listener: (peerId: PeerId, message: BaseMessage) => void) => VoidFunction;
+  sendBinary: (peerId: PeerId, data: ArrayBuffer) => void;
+  addBinaryListener: (listener: (peerId: string, data: ArrayBuffer) => void) => void;
+  waitForBufferedAmountLow: (peerId: PeerId) => Promise<void>;
 };
 
 export const PeerConnectionContext = createContext<PeerConnectionContextValue | null>(null);

@@ -32,10 +32,16 @@ export const TransferCard: React.FC<TransferCardProps> = ({ transfer }) => {
         return isIncoming ? 'Pending' : 'Waiting for approval';
       case 'accepted':
         return 'Accepted';
+      case 'transferring':
+        return 'Transferring';
+      case 'completed':
+        return 'Completed';
       case 'rejected':
         return 'Rejected';
       case 'disconnected':
         return 'Peer disconnected';
+      case 'failed':
+        return 'Failed';
     }
   }, [transfer]);
 
@@ -65,7 +71,9 @@ export const TransferCard: React.FC<TransferCardProps> = ({ transfer }) => {
             <span className="text-body text-text-secondary">
               {transfer.files.length} files ({getFormattedTotalSize(transfer.files)})
             </span>
-            <span className="text-body-small text-text-secondary mt-1">{status}</span>
+            <span className="text-body-small text-text-secondary mt-1">
+              {status} {transfer.progress}%
+            </span>
           </div>
         </div>
         {transfer.direction === 'incoming' && transfer.state === 'pending' && (

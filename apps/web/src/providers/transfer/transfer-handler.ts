@@ -29,6 +29,22 @@ export class TransferHandler {
           this.manager.handleReject(peerId, data.id);
           break;
         }
+        case 'transfer:start': {
+          this.manager.handleTransferStart(data);
+          break;
+        }
+        case 'transfer:file-start': {
+          this.manager.handleFileStart(data);
+          break;
+        }
+        case 'transfer:file-complete': {
+          this.manager.handleFileComplete(data);
+          break;
+        }
+        case 'transfer:complete': {
+          this.manager.handleTransferComplete(data);
+          break;
+        }
       }
     } catch (err) {
       console.error(err);

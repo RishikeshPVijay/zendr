@@ -16,6 +16,7 @@ export class PeerConnectionManager {
   private readonly send: SendFunction;
   private stateChangeListeners = new Map<PeerId, Set<(state: RTCPeerConnectionState) => void>>();
   private messageListeners = new Set<(peerId: PeerId, message: BaseMessage) => void>();
+  private binaryListeners = new Set<(peerId: PeerId, data: ArrayBuffer) => void>();
 
   constructor(send: SendFunction) {
     this.send = send;
@@ -38,6 +39,10 @@ export class PeerConnectionManager {
     this.messageListeners.forEach((listener) => listener(peerId, message));
   }
 
+  private handleBinary(peerId: PeerId, data: ArrayBuffer) {
+    this.binaryListeners.forEach((listener) => listener(peerId, data));
+  }
+
   private getOrCreate(peerId: PeerId): PeerConnection {
     let connection = this.connections.get(peerId);
 
@@ -47,6 +52,7 @@ export class PeerConnectionManager {
         this.send,
         this.handleOnStateChange.bind(this, peerId),
         this.handleMessage.bind(this, peerId),
+        this.handleBinary.bind(this, peerId),
       );
       this.connections.set(peerId, connection);
     }
@@ -125,5 +131,33 @@ export class PeerConnectionManager {
     }
 
     connection.sendMessage(message);
+  }
+
+  onBinary(listener: (peerId: PeerId, data: ArrayBuffer) => void) {
+    this.binaryListeners.add(listener);
+
+    return () => {
+      this.binaryListeners.delete(listener);
+    };
+  }
+
+  sendBinary(peerId: PeerId, data: ArrayBuffer) {
+    const connection = this.connections.get(peerId);
+
+    if (!connection) {
+      throw new Error('Connection not found');
+    }
+
+    connection.sendBinary(data);
+  }
+
+  waitForBufferedAmountLow(peerId: PeerId): Promise<void> {
+    const connection = this.connections.get(peerId);
+
+    if (!connection) {
+      throw new Error('Connection not found');
+    }
+
+    return connection.waitForBufferedAmountLow();
   }
 }
